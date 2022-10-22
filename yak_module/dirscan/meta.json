@@ -1,0 +1,109 @@
+{
+    "name": "综合目录扫描与爆破",
+    "tags": [
+        "brute",
+        "dirscan",
+        "misc"
+    ],
+    "help": "带有内置字典的综合目录扫描与爆破",
+    "author": "v1ll4n",
+    "module_file": "yak_module.yak",
+    "params": [
+        {
+            "name": "types",
+            "verbose": "检查项目",
+            "description": "选择内置的字典来完成测试",
+            "type": "select",
+            "default_value": "admin,backup,robots-100",
+            "required": true,
+            "group": "",
+            "extra_setting": "{\"double\":true,\"data\":[{\"key\":\"爆破备份文件\",\"value\":\"backup\"},{\"key\":\"爆破后台\",\"value\":\"admin\"},{\"key\":\"爆破 API 接口\",\"value\":\"apipath\"},{\"key\":\"PHP 路径字典\",\"value\":\"php\"},{\"key\":\"JSP 路径字典\",\"value\":\"jsp\"},{\"key\":\"ASPX 路径字典\",\"value\":\"aspx\"},{\"key\":\"MDB 数据库字典\",\"value\":\"mdb-download\"},{\"key\":\"综合字典3000+\",\"value\":\"misc-gt-3000\"},{\"key\":\"robots.txt top100\",\"value\":\"robots-100\"}]}"
+        },
+        {
+            "name": "concurrent",
+            "verbose": "并发数",
+            "description": "",
+            "type": "uint",
+            "default_value": "20",
+            "required": false,
+            "group": "",
+            "extra_setting": ""
+        },
+        {
+            "name": "target",
+            "verbose": "检测目标",
+            "description": "输入想要测试的目标：支持 IP / IP:Port / URL 等，可用逗号分隔，也可用换行分隔",
+            "type": "text",
+            "default_value": "",
+            "required": true,
+            "group": "",
+            "extra_setting": ""
+        },
+        {
+            "name": "exclude-status-code",
+            "verbose": "临时排除状态码",
+            "description": "需要临时排除一下误报或干扰项（通过状态码）",
+            "type": "string",
+            "default_value": "",
+            "required": false,
+            "group": "",
+            "extra_setting": ""
+        },
+        {
+            "name": "tempdict",
+            "verbose": "临时字典(小)",
+            "description": "添加几行临时字典，可以帮助用户快速设置",
+            "type": "text",
+            "default_value": "",
+            "required": false,
+            "group": "额外字典扩充",
+            "extra_setting": ""
+        },
+        {
+            "name": "user-dict",
+            "verbose": "用户自定义目录",
+            "description": "使用用户自定义目录",
+            "type": "upload-path",
+            "default_value": "",
+            "required": false,
+            "group": "额外字典扩充",
+            "extra_setting": "{\"isTextArea\":false}"
+        },
+        {
+            "name": "userprefix",
+            "verbose": "路径爆破前缀",
+            "description": "添加用户前缀",
+            "type": "string",
+            "default_value": "",
+            "required": false,
+            "group": "",
+            "extra_setting": ""
+        },
+        {
+            "name": "proxy",
+            "verbose": "添加代理",
+            "description": "支持 HTTP / HTTPS / SOCKS 代理",
+            "type": "string",
+            "default_value": "",
+            "required": false,
+            "group": "",
+            "extra_setting": ""
+        },
+        {
+            "name": "keyword404",
+            "verbose": "排除标题黑名单",
+            "description": "以 `|` 作为分割，按照页面标题排除 404",
+            "type": "string",
+            "default_value": "页面不存在|404 Not Found|Not Found|No Page",
+            "required": false,
+            "group": "",
+            "extra_setting": ""
+        }
+    ],
+    "document": "document.md",
+    "general_module_verbose": "综合目录扫描与爆破",
+    "general_module_key": "综合目录扫描与爆破",
+    "is_general_module": true,
+    "enable_plugin_selector": false,
+    "plugin_selector_types": ""
+}

